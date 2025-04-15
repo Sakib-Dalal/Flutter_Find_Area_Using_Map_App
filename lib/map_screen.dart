@@ -1,12 +1,17 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'area_calculator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:lottie/lottie.dart' as lottie;
 
-const double squareMetersToHectares = 0.000001;
-const double hectaresToGunta = 24.84;
+const double squareMetersToHectares = 0.0001;
+const double hectaresToAcre = 2.47105381;
+const double acreToGuntha = 40;
 
 class MapScreen extends StatefulWidget {
   @override
@@ -15,8 +20,9 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   List<LatLng> polygonPoints = [];
-  double areaInMeters = 0.0;
+  double areaInSquareMeters = 0.0;
   double areaInHectares = 0.0;
+  double areaInAcre = 0.0;
   double areaInGunta = 0.0;
   final NumberFormat _formatter = NumberFormat('#,##0.00', 'en_US');
 
@@ -31,14 +37,15 @@ class _MapScreenState extends State<MapScreen> {
     if (polygonPoints.length > 2) {
       final rawArea = calculatePolygonArea(polygonPoints);
       setState(() {
-        areaInMeters = rawArea;
-        print(areaInMeters);
-        areaInHectares = areaInMeters / squareMetersToHectares;
-        areaInGunta = areaInHectares * hectaresToGunta;
+        areaInSquareMeters = rawArea;
+        print(rawArea);
+        areaInHectares = areaInSquareMeters * squareMetersToHectares;
+        areaInAcre = areaInHectares * hectaresToAcre;
+        areaInGunta = areaInAcre * acreToGuntha;
       });
     } else {
       setState(() {
-        areaInMeters = 0.0;
+        areaInSquareMeters = 0.0;
         areaInHectares = 0.0;
         areaInGunta = 0.0;
       });
@@ -57,7 +64,7 @@ class _MapScreenState extends State<MapScreen> {
   void _resetPolygon() {
     setState(() {
       polygonPoints.clear();
-      areaInMeters = 0.0;
+      areaInSquareMeters = 0.0;
       areaInHectares = 0.0;
       areaInGunta = 0.0;
     });
@@ -68,6 +75,50 @@ class _MapScreenState extends State<MapScreen> {
       polygonPoints = List.from(polygonPoints); // Create a new list
       polygonPoints[index] = newPoint;
       _updateArea();
+    });
+  }
+
+  Map<String, dynamic>? cropPredictionValue;
+  bool isLoading = false;
+
+  Future<void> getCropYieldPrediction() async {
+    setState(() {
+      isLoading = true;
+    });
+    final url = Uri.parse(
+        'https://3spgyg1t6c.execute-api.ap-south-1.amazonaws.com/predict_crop_yield');
+
+    List<List<double>> polygonData = polygonPoints
+        .map((point) => [point.longitude, point.latitude])
+        .toList();
+
+    print(polygonData);
+
+    final body = {
+      "polygon": polygonData,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          cropPredictionValue = data;
+        });
+        print("✅ Crop Yield Prediction: $cropPredictionValue");
+      } else {
+        print("❌ Failed: ${response.statusCode} - ${response.body}");
+      }
+    } catch (e) {
+      print("⚠️ Error: $e");
+    }
+    setState(() {
+      isLoading = false;
     });
   }
 
@@ -88,15 +139,77 @@ class _MapScreenState extends State<MapScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.green[800])),
             Divider(),
-            _buildMeasurementRow('Hectares:', (areaInGunta / 10) - 0.1),
-            _buildMeasurementRow('Gunta:', areaInHectares * 100),
-            TextButton(
-              onPressed: () {},
-              child: Text(
-                'Predict Crop Yield',
-                style: TextStyle(color: Colors.blue),
-              ),
-            ),
+            _buildMeasurementRow('Hectares:', areaInHectares),
+            _buildMeasurementRow('Acre:', areaInAcre),
+            _buildMeasurementRow('Gunta:', areaInGunta),
+            isLoading
+                ? Center(
+                    child: LoadingAnimationWidget.newtonCradle(
+                      color: Colors.green,
+                      size: 80,
+                    ),
+                  )
+                : TextButton(
+                    onPressed: () async {
+                      await getCropYieldPrediction();
+                      showDialog<String>(
+                        context: context,
+                        builder: (BuildContext context) => Dialog(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    0.0,
+                                    20.0,
+                                    0.0,
+                                    0.0,
+                                  ),
+                                  child: Text(
+                                    'Crop Yield Prediction in Tons',
+                                    style: TextStyle(
+                                      color: Colors.green[800],
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                lottie.LottieBuilder.network(
+                                    'https://lottie.host/5264e424-5d8a-4366-b970-8cce31deead9/ak0kjHWIsW.json'),
+                                SizedBox(
+                                  height: 40,
+                                ),
+                                Text(
+                                  // 'Mean NDVI: ${cropPredictionValue?['mean_ndvi']?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Yield (tons/ha): ${cropPredictionValue?['predicted_yield_tons_per_ha']?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Yield (tons/acre): ${cropPredictionValue?['predicted_yield_tons_per_acre']?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Yield (tons/guntha): ${cropPredictionValue?['predicted_yield_tons_per_gu']?.toStringAsFixed(4) ?? 'N/A'}',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 15),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text(
+                                    'Close',
+                                    style: TextStyle(color: Colors.green),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'Predict Crop Yield in Tons',
+                      style: TextStyle(color: Colors.green[800]),
+                    ),
+                  ),
           ],
         ),
       ),
@@ -201,7 +314,7 @@ class _MapScreenState extends State<MapScreen> {
             right: 12,
             child: Column(
               children: [
-                if (areaInMeters > 0) _buildAreaCard(),
+                if (areaInSquareMeters > 0) _buildAreaCard(),
                 SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,

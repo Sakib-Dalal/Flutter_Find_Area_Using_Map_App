@@ -4,15 +4,12 @@ import 'package:geodesy/geodesy.dart';
 double calculatePolygonArea(List<LatLng> points) {
   if (points.length < 3) return 0.0;
 
-  final geodesy = Geodesy();
-  final closedPoints = List<LatLng>.from(points);
-
-  // Close the polygon if not closed
-  if (closedPoints.isNotEmpty && closedPoints.first != closedPoints.last) {
-    closedPoints.add(closedPoints.first);
+  double area = 0.0;
+  for (int i = 0; i < points.length; i++) {
+    int j = (i + 1) % points.length;
+    area += points[i].longitude * points[j].latitude;
+    area -= points[j].longitude * points[i].latitude;
   }
-
-  // Using correct method for version 0.10 - returns square meters
-  double area = geodesy.calculatePolygonArea(closedPoints);
-  return area.abs(); // Ensure positive value
+  area = area.abs() / 2.0;
+  return area * 111139 * 111139; // Approximate conversion to square meters
 }
