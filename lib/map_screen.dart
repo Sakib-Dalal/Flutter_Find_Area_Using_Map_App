@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'area_calculator.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+const double squareMetersToHectares = 0.000001;
+const double hectaresToGunta = 24.84;
 
 class MapScreen extends StatefulWidget {
   @override
@@ -10,7 +15,10 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   List<LatLng> polygonPoints = [];
-  double calculatedArea = 0.0;
+  double areaInMeters = 0.0;
+  double areaInHectares = 0.0;
+  double areaInGunta = 0.0;
+  final NumberFormat _formatter = NumberFormat('#,##0.00', 'en_US');
 
   void _addPoint(LatLng point) {
     setState(() {
@@ -21,9 +29,19 @@ class _MapScreenState extends State<MapScreen> {
 
   void _updateArea() {
     if (polygonPoints.length > 2) {
-      calculatedArea = calculatePolygonArea(polygonPoints);
+      final rawArea = calculatePolygonArea(polygonPoints);
+      setState(() {
+        areaInMeters = rawArea;
+        print(areaInMeters);
+        areaInHectares = areaInMeters / squareMetersToHectares;
+        areaInGunta = areaInHectares * hectaresToGunta;
+      });
     } else {
-      calculatedArea = 0.0;
+      setState(() {
+        areaInMeters = 0.0;
+        areaInHectares = 0.0;
+        areaInGunta = 0.0;
+      });
     }
   }
 
@@ -39,106 +57,194 @@ class _MapScreenState extends State<MapScreen> {
   void _resetPolygon() {
     setState(() {
       polygonPoints.clear();
-      calculatedArea = 0.0;
+      areaInMeters = 0.0;
+      areaInHectares = 0.0;
+      areaInGunta = 0.0;
     });
   }
 
   void _updatePoint(int index, LatLng newPoint) {
     setState(() {
+      polygonPoints = List.from(polygonPoints); // Create a new list
       polygonPoints[index] = newPoint;
       _updateArea();
     });
   }
 
+  Widget _buildAreaCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text('Land Area',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[800])),
+            Divider(),
+            _buildMeasurementRow('Hectares:', (areaInGunta / 10) - 0.1),
+            _buildMeasurementRow('Gunta:', areaInHectares * 100),
+            TextButton(
+              onPressed: () {},
+              child: Text(
+                'Predict Crop Yield',
+                style: TextStyle(color: Colors.blue),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMeasurementRow(String label, double value) {
+    final formattedValue = _formatter.format(value);
+    print(formattedValue);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+          ),
+          Text(formattedValue,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Farm Area Calculator')),
+      appBar: AppBar(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(16.0)),
+        ),
+        automaticallyImplyLeading: false,
+        toolbarHeight: 40.0,
+        title: Text(
+          'farmo',
+          style: GoogleFonts.robotoFlex(
+            color: Color(0xff2EA667),
+            fontWeight: FontWeight.w600,
+            fontSize: 20.0,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black, // To ensure text visibility
+      ),
       body: Stack(
         children: [
           FlutterMap(
             options: MapOptions(
-              initialCenter: LatLng(20.5937, 78.9629),
-              initialZoom: 6.0,
+              initialCenter: LatLng(15.5937, 75.9629),
+              initialZoom: 5.5,
               onTap: (tapPosition, point) => _addPoint(point),
             ),
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    "https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                userAgentPackageName: 'com.farmo.app',
+                maxZoom: 25,
               ),
               if (polygonPoints.isNotEmpty)
                 PolygonLayer(
                   polygons: [
                     Polygon(
                       points: polygonPoints,
-                      color: Colors.green.withOpacity(0.5),
+                      color: Colors.green.withOpacity(0.3),
                       borderStrokeWidth: 2,
                       borderColor: Colors.green,
                     ),
                   ],
                 ),
               MarkerLayer(
-                markers: List.generate(polygonPoints.length, (index) {
-                  return Marker(
-                    point: polygonPoints[index],
-                    width: 40,
-                    height: 40,
-                    child: GestureDetector(
-                      onPanUpdate: (details) {
-                        LatLng newPoint = LatLng(
-                          polygonPoints[index].latitude +
-                              details.delta.dy * 0.0001,
-                          polygonPoints[index].longitude +
-                              details.delta.dx * 0.0001,
-                        );
-                        _updatePoint(index, newPoint);
-                      },
-                      child:
-                          Icon(Icons.location_on, color: Colors.red, size: 40),
-                    ),
-                  );
-                }),
+                markers: List.generate(
+                  polygonPoints.length,
+                  (index) {
+                    return Marker(
+                      point: polygonPoints[index],
+                      width: 40,
+                      height: 40,
+                      child: GestureDetector(
+                        onPanUpdate: (details) {
+                          LatLng newPoint = LatLng(
+                            polygonPoints[index].latitude +
+                                details.delta.dy * 0.0001,
+                            polygonPoints[index].longitude +
+                                details.delta.dx * 0.0001,
+                          );
+                          _updatePoint(index, newPoint);
+                        },
+                        child: Icon(Icons.location_on,
+                            color: Colors.green, size: 30),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
           Positioned(
-            bottom: 20,
-            left: 10,
-            right: 10,
+            bottom: 80,
+            left: 12,
+            right: 12,
             child: Column(
               children: [
-                if (calculatedArea > 0)
-                  Container(
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black26, blurRadius: 4)
-                      ],
-                    ),
-                    child: Text(
-                      'Area: ${calculatedArea.toStringAsFixed(2)} m² (${(calculatedArea / 10000).toStringAsFixed(2)} hectares)',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                SizedBox(height: 10),
+                if (areaInMeters > 0) _buildAreaCard(),
+                SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     ElevatedButton(
                       onPressed: _undoLastPoint,
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange),
-                      child: Text('Undo'),
+                        backgroundColor: Colors.black,
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.undo,
+                            color: Colors.white,
+                          ),
+                          Text(
+                            'Undo',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                     ElevatedButton(
                       onPressed: _resetPolygon,
-                      style:
-                          ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      child: Text('Reset'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.refresh,
+                            color: Colors.white,
+                          ),
+                          Text(
+                            'Reset',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
