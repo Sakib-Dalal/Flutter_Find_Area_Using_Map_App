@@ -183,10 +183,17 @@ class _MapScreenState extends State<MapScreen> {
                                   height: 40,
                                 ),
                                 Text(
-                                  // 'Mean NDVI: ${cropPredictionValue?['mean_ndvi']?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Mean NDVI: ${cropPredictionValue?['mean_ndvi']?.toStringAsFixed(2) ?? 'N/A'}\n'
                                   'Yield (tons/ha): ${cropPredictionValue?['predicted_yield_tons_per_ha']?.toStringAsFixed(2) ?? 'N/A'}\n'
                                   'Yield (tons/acre): ${cropPredictionValue?['predicted_yield_tons_per_acre']?.toStringAsFixed(2) ?? 'N/A'}\n'
                                   'Yield (tons/guntha): ${cropPredictionValue?['predicted_yield_tons_per_gu']?.toStringAsFixed(4) ?? 'N/A'}',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 15),
+                                Text(
+                                  // 'Mean NDVI: ${cropPredictionValue?['mean_ndvi']?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Total Yield (Acres): ${(cropPredictionValue?['predicted_yield_tons_per_acre'] * areaInAcre)?.toStringAsFixed(2) ?? 'N/A'}\n'
+                                  'Total Yield (Gunta): ${(cropPredictionValue?['predicted_yield_tons_per_gu'] * areaInGunta)?.toStringAsFixed(4) ?? 'N/A'}',
                                   style: TextStyle(fontSize: 16),
                                 ),
                                 const SizedBox(height: 15),
